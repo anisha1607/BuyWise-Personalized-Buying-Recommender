@@ -32,11 +32,13 @@ export interface Contradiction {
 }
 
 export interface Evidence {
-  aspect: string;
-  text: string;
-  score: number;
-  source: string;
+  claim: string;
+  evidence_snippet: string;
+  source_name: string;
+  source_type: string;
+  source_url: string;
   sentiment: "positive" | "negative" | "neutral";
+  supports: "pros" | "cons" | "verdict" | "verification";
 }
 
 export interface PrefVsReality {
@@ -75,11 +77,29 @@ export interface AnalyzeResponse {
   radar_data: Array<{ aspect: string; score: number }>;
 }
 
-export async function askChat(product: string, question: string, summary: any): Promise<string> {
+export async function askChat(
+  product: string,
+  question: string,
+  summary: any,
+  extras?: {
+    pros?: string[];
+    cons?: string[];
+    verdict?: string;
+    evidence?: any[];
+  }
+): Promise<string> {
   const res = await fetch("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ product_name: product, question, aspect_summary: summary }),
+    body: JSON.stringify({
+      product_name: product,
+      question,
+      aspect_summary: summary,
+      pros: extras?.pros ?? [],
+      cons: extras?.cons ?? [],
+      verdict: extras?.verdict ?? "",
+      evidence: extras?.evidence ?? [],
+    }),
   });
   if (!res.ok) return "Sorry, I couldn't process that question.";
   const data = await res.json();

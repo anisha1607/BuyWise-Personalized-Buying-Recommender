@@ -396,54 +396,122 @@ function MarketInsights({ intel }: { intel: MarketIntelligence }) {
   );
 }
 
-function AskBuyWise({ product, summary }: { product: string; summary: any }) {
+function AskBuyWise({
+  product, summary, pros, cons, verdict, evidence
+}: {
+  product: string;
+  summary: any;
+  pros: string[];
+  cons: string[];
+  verdict: string;
+  evidence: any[];
+}) {
   const [query, setQuery] = useState("");
-  const [chat, setChat] = useState<{ role: "user" | "ai"; text: string }[]>([]);
+  const [chat, setChat] = useState<{ role: "user" | "ai"; text: string; source?: string }[]>([]);
   const [loading, setLoading] = useState(false);
 
   const handleAsk = async () => {
-    if (!query.trim()) return;
+    if (!query.trim() || loading) return;
     const userMsg = query;
     setQuery("");
     setChat(prev => [...prev, { role: "user", text: userMsg }]);
     setLoading(true);
-    
-    const ans = await askChat(product, userMsg, summary);
-    setChat(prev => [...prev, { role: "ai", text: ans }]);
-    setLoading(false);
+
+    // Trim summary to top 3 snippets per aspect to reduce payload size
+    const trimmedSummary: Record<string, any> = {};
+    if (summary && typeof summary === "object") {
+      for (const [aspect, data] of Object.entries(summary as Record<string, any>)) {
+        trimmedSummary[aspect] = {
+          ...data,
+          snippets: (data.snippets || []).slice(0, 3),
+        };
+      }
+    }
+
+    try {
+      const ans = await askChat(product, userMsg, trimmedSummary, {
+        pros,
+        cons,
+        verdict,
+        evidence: (evidence || []).slice(0, 12),
+      });
+      setChat(prev => [...prev, { role: "ai", text: ans }]);
+    } catch {
+      setChat(prev => [...prev, {
+        role: "ai",
+        text: "⚠️ Couldn't reach BuyWise AI right now. Check your GROQ_API_KEY in the backend .env file."
+      }]);
+    } finally {
+      setLoading(false);
+    }
   };
+
+  const suggestedQuestions = [
+    "What are the main pros?",
+    "What are the main cons?",
+    "How is the battery life?",
+    "Is the sound quality good?",
+  ];
 
   return (
     <div className="card" style={{ position: "sticky", top: "2rem" }}>
       <SectionLabel title="Ask BuyWise AI" />
-      <div style={{ height: "300px", overflowY: "auto", marginBottom: "1rem", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+      <div style={{ height: "320px", overflowY: "auto", marginBottom: "1rem", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
         {chat.length === 0 && (
-          <p style={{ color: "var(--text-muted)", fontSize: "0.85rem", textAlign: "center", marginTop: "2rem" }}>
-            "How does the battery life compare?"<br/>
-            "What is the build quality like?"
-          </p>
+          <div style={{ padding: "0.5rem 0" }}>
+            <p style={{ color: "var(--text-muted)", fontSize: "0.78rem", marginBottom: "0.6rem" }}>Try asking:</p>
+            {suggestedQuestions.map((q, i) => (
+              <button
+                key={i}
+                onClick={() => { setQuery(q); }}
+                style={{
+                  display: "block", width: "100%", textAlign: "left",
+                  background: "var(--bg-3)", border: "1px solid var(--border)",
+                  borderRadius: 8, padding: "0.45rem 0.7rem", marginBottom: "0.35rem",
+                  color: "var(--text-muted)", fontSize: "0.8rem", cursor: "pointer",
+                }}
+              >
+                {q}
+              </button>
+            ))}
+          </div>
         )}
         {chat.map((m, i) => (
-          <div key={i} style={{ 
+          <div key={i} style={{
             alignSelf: m.role === "user" ? "flex-end" : "flex-start",
             background: m.role === "user" ? "var(--accent)" : "var(--bg-3)",
             color: m.role === "user" ? "#000" : "var(--text)",
-            padding: "0.75rem", borderRadius: "12px", maxWidth: "85%", fontSize: "0.85rem"
+            padding: "0.75rem", borderRadius: "12px", maxWidth: "90%", fontSize: "0.83rem",
+            lineHeight: 1.5, whiteSpace: "pre-wrap",
           }}>
             {m.text}
           </div>
         ))}
-        {loading && <div style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>Thinking...</div>}
+        {loading && (
+          <div style={{
+            display: "flex", alignItems: "center", gap: "0.5rem",
+            color: "var(--text-muted)", fontSize: "0.78rem",
+          }}>
+            <span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>⟳</span>
+            Thinking...
+          </div>
+        )}
       </div>
       <div style={{ display: "flex", gap: "0.5rem" }}>
-        <input 
-          className="input-field" 
-          value={query} 
+        <input
+          className="input-field"
+          value={query}
           onChange={e => setQuery(e.target.value)}
-          placeholder="Ask a question..."
+          placeholder="Ask about battery, sound, comfort..."
           onKeyDown={e => e.key === "Enter" && handleAsk()}
+          disabled={loading}
         />
-        <button className="btn-primary" onClick={handleAsk} style={{ padding: "0.5rem 1rem" }}>↑</button>
+        <button
+          className="btn-primary"
+          onClick={handleAsk}
+          disabled={loading || !query.trim()}
+          style={{ padding: "0.5rem 1rem", opacity: loading ? 0.6 : 1 }}
+        >↑</button>
       </div>
     </div>
   );
@@ -592,7 +660,14 @@ function DashboardStep({ result, onReset }: { result: AnalyzeResponse; onReset: 
             <ProsConsCard pros={result.pros} cons={result.cons} />
           </div>
           <div className="fade-up">
-            <AskBuyWise product={result.product} summary={result.aspect_summary} />
+            <AskBuyWise
+              product={result.product}
+              summary={result.aspect_summary}
+              pros={result.pros}
+              cons={result.cons}
+              verdict={result.verdict}
+              evidence={result.evidence}
+            />
           </div>
         </div>
       )}

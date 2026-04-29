@@ -274,7 +274,17 @@ class ChatResponse(BaseModel):
     source: str = "ai"
 
 @router.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest):
+def chat(request: ChatRequest):
+    try:
+        return _chat_internal(request)
+    except Exception as e:
+        with open("backend_error.log", "a") as f:
+            f.write(f"\n--- CHAT ERROR AT {datetime.now()} ---\n")
+            f.write(traceback.format_exc())
+        print(f"[BuyWise] CHAT ERROR: {e}")
+        return ChatResponse(answer="Sorry, I encountered an error processing your chat.", source="error")
+
+def _chat_internal(request: ChatRequest):
     product = request.product_name
     question = request.question.strip()
     if not question:

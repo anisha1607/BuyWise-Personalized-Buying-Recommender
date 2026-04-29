@@ -54,16 +54,17 @@ Multi-source ingestion
    • deal-breaker penalty: −8 pts per triggered aspect
           │
           ▼
-   LLM Layer  (Groq — Llama 3)
-   • verdict + hypothesis          (explanation_agent)
-   • personalized fit analysis     (analyze route)
-   • devil's-advocate critical take (critical_agent)
-          │
-          ▼
-   Structured Dashboard
-   • Fit Score  • Aspect Chart  • Source Comparison
-   • Contradiction Detector  • Pros / Cons  • Evidence Cards
-   • Preference vs. Reality  • Export JSON / CSV
+    LLM Layer  (Groq — Llama 3 with HuggingFace Fallback)
+    • verdict + hypothesis          (explanation_agent)
+    • personalized fit analysis     (analyze route)
+    • devil's-advocate critical take (critical_agent)
+    • simulated intelligence fallback (for offline environments)
+           │
+           ▼
+    Structured Dashboard
+    • Fit Score  • Aspect Chart  • Source Comparison
+    • Contradiction Detector  • Pros / Cons  • Evidence Cards
+    • Preference vs. Reality  • Export JSON / CSV
 ```
 
 ---
@@ -79,8 +80,8 @@ Matching sentences against curated keyword lists is deterministic and fast. A pr
 **Per-source scraping with concurrent execution**
 Amazon, BestBuy, and YouTube run in a `ThreadPoolExecutor(max_workers=3)` so all three fire simultaneously. This cuts collection time from ~35 seconds (sequential) to ~10 seconds (bottlenecked by the slowest source). The FastAPI endpoint is a plain `def` (not `async def`) so scrapers run in FastAPI's thread pool rather than blocking uvicorn's event loop.
 
-**LLM used only for synthesis, not for core scoring**
-The fit score and aspect sentiments are computed deterministically from real review data. The LLM is brought in only at the end to write the human-readable verdict and critical take — so the numbers are trustworthy even if the API is slow or unavailable (graceful fallback text is returned).
+**LLM used only for synthesis, with a strict fallback policy**
+The fit score and aspect sentiments are computed deterministically from real review data. The LLM is centralized in `llm_service.py` using a **Groq → HuggingFace** fallback chain. If both are unreachable (e.g., in network-restricted development environments), a **Simulated Intelligence Mode** kicks in to provide realistic mock data so the UI remains fully interactive.
 
 **Flexible file ingestion over a fixed schema**
 `load_file_reviews()` auto-scans `backend/data/` for `.csv`, `.json`, and `.jsonl` files and uses priority-ordered column name matching to handle Yelp (`stars`, `text`), UCSD Amazon 2023 (`rating`, `reviewText`, `asin`), and custom exports. Drop any new dataset file in the folder and it gets picked up automatically.
@@ -93,8 +94,8 @@ The fit score and aspect sentiments are computed deterministically from real rev
 |---|---|
 | Backend API | FastAPI + Uvicorn |
 | NLP / Sentiment | VADER (`vaderSentiment`) |
-| LLM | Groq API (Llama 3.3 70B / 3.1 8B) |
-| Scraping | `requests`, `BeautifulSoup4`, `lxml`, `httpx` |
+| LLM Orchestration | Centralized `llm_service.py` (Groq/HF/Sim) |
+| Scraping Engine | `httpx` + `BeautifulSoup4` (Live Scrapers) |
 | YouTube | `youtube-transcript-api` |
 | Data | `pandas` |
 | Frontend | Next.js 14 (App Router), TypeScript |
@@ -180,8 +181,10 @@ BuyWise/
 │   │   ├── eda_agent.py             # source comparison + contradictions
 │   │   └── preference_agent.py      # user weight computation
 │   └── routers/
-│       ├── analyze.py               # POST /api/analyze
+│       ├── analyze.py               # POST /api/analyze (Main Pipeline)
 │       └── export.py                # POST /api/export
+├── backend_error.log                # Centralized error tracking
+├── start.py                         # Single-command startup script
 └── frontend/
     └── src/
         ├── app/page.tsx             # 4-step wizard (search → prefs → loading → dashboard)

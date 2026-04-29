@@ -10,12 +10,23 @@ const SOURCE_COLORS: Record<string, string> = {
   Amazon:     "#f5a623",
   BestBuy:    "#3fd68f",
   YouTube:    "#7c6af7",
-  Pasted:     "#88aaff",
-  Unknown:    "#888888",
+  Reddit:     "#ff4500",
+  Personal:   "#88aaff",
+  "External Review Source": "#888888",
 };
 
+// Simple hash to generate a stable color for unknown sources
+function stringToColor(str: string) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = str.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const h = Math.abs(hash) % 360;
+  return `hsl(${h}, 70%, 65%)`;
+}
+
 function getColor(src: string) {
-  return SOURCE_COLORS[src] ?? "#888888";
+  return SOURCE_COLORS[src] ?? stringToColor(src);
 }
 
 function CustomTooltip({ active, payload, label }: any) {
