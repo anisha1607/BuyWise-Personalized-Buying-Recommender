@@ -11,19 +11,8 @@ def run(cmd, cwd):
     subprocess.run(cmd, cwd=cwd, check=True, shell=True)
 
 
-def has_sample_data():
-    data_dir = os.path.join(BACKEND, "data")
-    return os.path.isdir(data_dir) and len(os.listdir(data_dir)) > 0
-
-
 print("==> Installing backend dependencies...")
 run(f'"{sys.executable}" -m pip install -r requirements.txt -q', BACKEND)
-
-if not has_sample_data():
-    print("==> Generating sample data...")
-    run(f'"{sys.executable}" generate_sample_data.py', BACKEND)
-else:
-    print("==> Sample data already exists, skipping.")
 
 print("==> Installing frontend dependencies...")
 run("npm install --silent", FRONTEND)

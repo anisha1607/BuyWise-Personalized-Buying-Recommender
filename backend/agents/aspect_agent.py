@@ -1,16 +1,46 @@
+import re
 from typing import List, Dict
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
+# Keywords that are long/specific enough to match as substrings safely
 ASPECT_KEYWORDS: Dict[str, List[str]] = {
-    "comfort":      ["comfort", "comfortable", "cushion", "padding", "fit", "soft", "tight", "clamp", "lightweight", "weight", "wear", "ergon"],
-    "price":        ["price", "cost", "expensive", "cheap", "value", "worth", "money", "afford", "budget", "overpriced", "deal", "sale"],
-    "battery":      ["battery", "charge", "charging", "hours", "drain", "power", "standby", "life", "quick charge"],
-    "sound":        ["sound", "audio", "bass", "treble", "music", "quality", "equalizer", "eq", "frequency", "hz", "soundstage", "instrument", "vocal"],
-    "durability":   ["durable", "durability", "build", "material", "plastic", "metal", "sturdy", "fragile", "break", "crack"],
-    "performance":  ["performance", "anc", "noise cancel", "microphone", "mic", "call", "speed", "lag", "feature", "function"],
-    "design":       ["design", "look", "aesthetic", "style", "color", "finish", "sleek", "bulky", "premium", "elegant", "fold", "compact"],
-    "connectivity": ["bluetooth", "connect", "wifi", "wireless", "pairing", "pair", "nfc", "usb", "multipoint", "range", "drop", "signal"],
+    "comfort":      ["comfort", "comfortable", "cushion", "padding", "clamp", "lightweight", "ergon",
+                     "soft", "tight", "weight", "fit", "wear"],
+    "price":        ["price", "cost", "expensive", "cheap", "value", "worth", "money", "afford",
+                     "budget", "overpriced", "deal", "sale"],
+    "battery":      ["battery", "charge", "charging", "drain", "power", "standby", "quick charge",
+                     "hours", "battery life", "battery health"],
+    "sound":        ["sound", "audio", "bass", "treble", "music", "equalizer", "eq", "frequency",
+                     "hz", "soundstage", "instrumental", "vocals", "vocal"],
+    "durability":   ["durable", "durability", "build quality", "material", "metal", "sturdy",
+                     "fragile", "break", "crack", "plastic"],
+    "performance":  ["performance", "anc", "noise cancel", "noise cancell", "microphone", "mic",
+                     "call quality", "speed", "lag", "latency"],
+    "design":       ["design", "aesthetic", "style", "color", "finish", "sleek", "bulky",
+                     "elegant", "foldable", "compact", "look"],
+    "connectivity": ["bluetooth", "connect", "wifi", "wireless", "pairing", "pair", "nfc",
+                     "multipoint", "usb", "signal", "drop"],
 }
+
+# Short/ambiguous keywords that need word-boundary matching to avoid false positives
+# e.g. "life" would match "lifesaver", "build" would match "building"
+_WORD_BOUNDARY_KEYWORDS: Dict[str, List[str]] = {
+    "comfort":      ["soft", "tight", "fit", "wear", "weight"],
+    "battery":      ["hours", "life"],
+    "sound":        ["quality"],
+    "durability":   ["plastic", "break", "material"],
+    "performance":  ["call", "speed", "lag"],
+    "design":       ["look", "style", "compact"],
+    "connectivity": ["drop", "signal", "connect"],
+}
+
+# Negative signal words for keyword-based fallback (used in eda_agent)
+NEGATIVE_SIGNAL_WORDS = [
+    "not ", "issue", "problem", "poor", "fail", "buggy", "crack", "unreliable",
+    "too expensive", "overpriced", "disappointing", "uncomfortable", "worse",
+    "terrible", "horrible", "broken", "weak", "lacks", "limited", "drops",
+    "degrades", "difficult", "struggle", "hard to", "awkward",
+]
 
 _analyzer = SentimentIntensityAnalyzer()
 # Boost scores for specific product review terms
@@ -29,6 +59,21 @@ _analyzer.lexicon.update({
 })
 
 
+def _matches_aspect(sl: str, aspect: str, keywords: List[str]) -> bool:
+    """Check if sentence matches aspect keywords using word-boundary for ambiguous terms."""
+    boundary_kws = _WORD_BOUNDARY_KEYWORDS.get(aspect, [])
+    for kw in keywords:
+        if kw in boundary_kws:
+            # Use word-boundary regex to avoid false substring matches
+            if re.search(r'\b' + re.escape(kw) + r'\b', sl):
+                return True
+        else:
+            # Multi-word phrases or specific enough terms: substring is fine
+            if kw in sl:
+                return True
+    return False
+
+
 def analyze_aspects(reviews: List[Dict]) -> Dict[str, Dict]:
     buckets: Dict[str, Dict] = {a: {"sentiments": [], "snippets": []} for a in ASPECT_KEYWORDS}
 
@@ -36,38 +81,46 @@ def analyze_aspects(reviews: List[Dict]) -> Dict[str, Dict]:
         text = review.get("text", "")
         # Calculate overall sentiment for the review and save it
         review["sentiment_score"] = _analyzer.polarity_scores(text)["compound"]
-        
+
         sentences = [s.strip() for s in text.replace(". ", ".|").split("|") if len(s.strip()) > 5]
 
-        added_snippets = set()
+        added_snippets: Dict[str, set] = {a: set() for a in ASPECT_KEYWORDS}
+
         for sentence in sentences:
             sl = sentence.lower()
-            if sl in added_snippets:
-                continue
-                
-            for aspect, keywords in ASPECT_KEYWORDS.items():
-                if any(kw in sl for kw in keywords):
-                    score = _analyzer.polarity_scores(sentence)["compound"]
-                    
-                    # Manual Overrides for common False Negatives
-                    pos_patterns = ["without needing", "no lag", "minimal drain", "worth every penny", "steal", "rock solid"]
-                    if any(p in sl for p in pos_patterns):
-                        score += 0.4
-                    
-                    # Boost battery mentions with durations (e.g., "5 days", "30 hours")
-                    if aspect == "battery" and any(d in sl for d in ["day", "hour", "week"]):
-                        # If there's a number nearby, it's likely a positive duration
-                        if any(char.isdigit() for char in sl):
-                            score += 0.3
 
-                    buckets[aspect]["sentiments"].append(score)
-                    if len(buckets[aspect]["snippets"]) < 10:
-                        buckets[aspect]["snippets"].append({
-                            "text": sentence,
-                            "score": round(score, 3),
-                            "source": review.get("source", "Unknown"),
-                        })
-                        added_snippets.add(sl)
+            for aspect, keywords in ASPECT_KEYWORDS.items():
+                if sl in added_snippets[aspect]:
+                    continue
+
+                if not _matches_aspect(sl, aspect, keywords):
+                    continue
+
+                score = _analyzer.polarity_scores(sentence)["compound"]
+
+                # Manual Overrides for common False Negatives
+                pos_patterns = ["without needing", "no lag", "minimal drain", "worth every penny",
+                                 "steal", "rock solid", "no issue"]
+                if any(p in sl for p in pos_patterns):
+                    score += 0.4
+
+                # Boost battery mentions with durations (e.g., "5 days", "30 hours")
+                if aspect == "battery" and any(d in sl for d in ["day", "hour", "week"]):
+                    if any(char.isdigit() for char in sl):
+                        score += 0.3
+
+                buckets[aspect]["sentiments"].append(score)
+                if len(buckets[aspect]["snippets"]) < 10:
+                    buckets[aspect]["snippets"].append({
+                        "text": sentence,
+                        "score": round(score, 3),
+                        "source": review.get("source", "Unknown"),
+                        "source_name": review.get("source_name", review.get("source", "Unknown").title()),
+                        "source_type": review.get("source_type", "Review"),
+                        "url": review.get("url", ""),
+                        "title": review.get("title", ""),
+                    })
+                    added_snippets[aspect].add(sl)
 
     result: Dict[str, Dict] = {}
     for aspect, data in buckets.items():

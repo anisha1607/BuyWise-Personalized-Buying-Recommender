@@ -1,9 +1,9 @@
 fastapi>=0.115.0
 uvicorn[standard]>=0.32.0
-pandas>=2.3.3
+pandas>=2.2.0
 vaderSentiment==3.3.2
-sentence-transformers>=5.1.0
-numpy>=2.2.0
+sentence-transformers>=3.0.0
+numpy>=1.26.0
 httpx>=0.28.0
 youtube-transcript-api>=1.2.0
 groq>=0.13.0
