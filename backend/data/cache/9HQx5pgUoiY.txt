@@ -1,0 +1,32 @@
+(shapes springing) (electrical warbling) - So I have been using
+this M1 Max MacBook Pro for the past three
+years since it came out, and it's been great. I have felt absolutely no
+compulsion to upgrade since, haven't needed to. It's funny, most of my
+work is pretty light, but occasionally I will have
+to edit a video on the go, which is then when, you
+know, the extra horsepower and the screen and everything
+about this comes in handy, and it's great. If I didn't have to do that ever, I would just have, like,
+an Air or a Surface Laptop, something like that. But that range of work is why
+this has been great for me, and it's been awesome so far. (light groovy electronic music) So along comes this M4
+generation of MacBook Pros, and it's the first generation that I have actually been
+tempted to maybe upgrade to. You know, they've stacked a couple of the right upgrades in the right places for things that actually
+make a difference to me. So let's just get right
+into it. Nuts and bolts. 'Cause the first big
+pillar is performance. And the main reason why this
+new laptop matters at all is that it's got the new
+generation of M4 chips inside. And we all know the leap from Intel chips to Apple silicon chips
+for M1 was generational. But since then, it's been
+a sort of more reasonable incremental upgrade, going
+from M1 to M2, then M3, and then M4. So I think it's pretty
+obvious that nobody with an M2 or M3 needs to upgrade, but there have been
+enough improvements now stacking up upon each other from M1 to M4 that the numbers are now starting to get kind of interesting. So just to set the stage, this
+laptop that I've been using is the M1 Max maxed out. Basically, the best you
+could get at the time. 64 gigs of unified memory on this system. And this unit I've been
+testing of the M4 Max is also maxed out. It's the best you can get now; faster, stronger on the new one: Three nanometers versus five, 546 gigs per second of memory bandwidth versus 400. Just the hardware
+improvements to get to M4 Max are clearly there. So, to keep the apples-to-apples
+comparison going, Apple, in their own presentation, said up to 2.2 times faster
+CPU performance than M1 Max and 1.9 times faster GPU performance. So we're looking at around twice as fast, and the synthetic benchmarks
+I've run back this up. I got over 4,000 in
+Geekbench 6 CPU single core, which is the highest single
+core score ever in a Mac by a while. And the multi-core score
+was incredible, too. Tops the chart. And then, GPU has imp
