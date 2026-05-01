@@ -12,6 +12,7 @@ from agents.cleaning_agent import clean_reviews
 from agents.aspect_agent import ASPECT_KEYWORDS
 from services.llm_service import get_llm_response
 from services.synthesis_service import calculate_fit_score, generate_score_breakdown, detect_release_status
+from services import cache_service
 from models import (
     AnalyzeRequest, AnalyzeResponse, ChatRequest, ChatResponse,
     MarketIntelligence, Competitor
@@ -39,7 +40,15 @@ router = APIRouter()
 @router.post("/analyze", response_model=AnalyzeResponse)
 def analyze(request: AnalyzeRequest):
     try:
-        return _analyze_internal(request)
+        prefs = request.preferences.dict()
+        cached = cache_service.get(request.product_name, prefs)
+        if cached:
+            print(f"[BuyWise] Cache hit for: {request.product_name}")
+            return cached
+
+        result = _analyze_internal(request)
+        cache_service.set(request.product_name, prefs, result.dict())
+        return result
     except Exception as e:
         with open("backend_error.log", "a") as f:
             f.write(f"\n--- ERROR AT {datetime.now()} ---\n")
@@ -89,9 +98,10 @@ def _analyze_internal(request: AnalyzeRequest):
     MANDATORY: You MUST provide at least 3 items in the 'critical_take' array.
     MANDATORY: You MUST provide at least 3 items in the 'trade_offs' array.
     MANDATORY: IDENTIFY THE CATEGORY of '{request.product_name}' (e.g., Headphones, Laptop, Smartphone).
-    MANDATORY: Evidence MUST be balanced. Include at least 4 items for 'pros' and at least 4 items for 'cons'.
+    MANDATORY: Evidence MUST be balanced. Include at least 4 items with "supports":"pros" and at least 4 items with "supports":"cons".
+    MANDATORY: Evidence MUST include AT LEAST 1 item from EACH of these source_names: "Amazon", "YouTube", "BestBuy". If a source has no scraped data, synthesize from your internal knowledge and set source_type to "Expert Synthesis".
     MANDATORY: EVERY claim in the 'pros' and 'cons' arrays MUST be verifiable via a corresponding item in the 'evidence' array.
-    MANDATORY: ALL competitors MUST belong to the SAME category identified. Do NOT suggest a laptop if analyzing headphones.
+    MANDATORY: 'competitors' MUST contain AT LEAST 2 products from the SAME category identified. Do NOT suggest a laptop if analyzing headphones.
     
     Return ONLY valid JSON matching this schema:
     {{
@@ -118,13 +128,15 @@ def _analyze_internal(request: AnalyzeRequest):
         "BestBuy": -1.0 to 1.0
       }},
       "market_intelligence": {{
-        "competitors": [{{
-          "name": "string", 
-          "link": "https://www.google.com/search?q=name+price",
-          "description": "one sentence why it's a good alternative",
-          "pros": ["list of 2-3 key strengths"],
-          "cons": ["list of 2-3 key weaknesses"]
-        }}],
+        "competitors": [
+          {{
+            "name": "string (REQUIRED — AT LEAST 2 entries, same product category)",
+            "link": "https://www.google.com/search?q=name+price",
+            "description": "one sentence why it's a good alternative",
+            "pros": ["list of 2-3 key strengths"],
+            "cons": ["list of 2-3 key weaknesses"]
+          }}
+        ],
         "value_badge": "one of: Great Value, Fair Price, Premium, Overpriced (Base this on the relationship between product sentiment and the user's selected budget)",
         "release_status": "e.g. Latest model, replaced by X, or upcoming rumors",
         "sentiment_trend": "one of: improving, stable, declining (Base this on the review dates provided in the context)"
@@ -503,7 +515,22 @@ def _analyze_internal(request: AnalyzeRequest):
     raw_competitors = llm_data.get("market_intelligence", {}).get("competitors", [])
     if not isinstance(raw_competitors, list):
         raw_competitors = []
-    
+
+    # Guarantee at least 2 competitors using category-aware Google search fallbacks
+    if len(raw_competitors) < 2:
+        category = llm_data.get("detected_category", request.product_name)
+        cat_q = urllib.parse.quote(category)
+        needed = 2 - len(raw_competitors)
+        labels = ["Top Alternative", "Another Great Option"]
+        for i in range(needed):
+            raw_competitors.append({
+                "name": f"{labels[i]} ({category})",
+                "link": f"https://www.google.com/search?q=best+{cat_q}+alternatives+{i+1}",
+                "description": f"A well-regarded alternative in the {category} category.",
+                "pros": ["See Google for details"],
+                "cons": ["See Google for details"],
+            })
+
     competitors = [Competitor(
         name=c.get("name", "Alternative"),
         link=c.get("link", "#"),
@@ -530,7 +557,7 @@ def _analyze_internal(request: AnalyzeRequest):
         contradictions=contradictions,
         pros=_sanitize_string_list(llm_data.get("pros", []), "pros"),
         cons=_sanitize_string_list(llm_data.get("cons", []), "cons"),
-        evidence=evidence[:12],
+        evidence=evidence[:20],
         preference_vs_reality=preference_vs_reality,
         deal_breaker_flags=deal_breaker_flags,
         review_count=total_review_count,

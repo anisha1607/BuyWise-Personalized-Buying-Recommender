@@ -47,7 +47,7 @@ def search_reddit(product_name: str) -> List[Dict]:
     }
 
     try:
-        with httpx.Client(headers=headers, timeout=15, follow_redirects=True) as client:
+        with httpx.Client(headers=headers, timeout=10, follow_redirects=True) as client:
             resp = client.get(search_url)
             if resp.status_code == 200:
                 from bs4 import BeautifulSoup
@@ -130,19 +130,19 @@ def _fetch_youtube_description(video_id: str) -> str:
 
 
 def load_youtube_reviews(product_name: str, video_ids: List[str]) -> List[Dict]:
-    try:
-        from youtube_transcript_api import YouTubeTranscriptApi
-        reviews = []
-        transcripts_blocked = False
-        for vid in video_ids:
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from youtube_transcript_api import YouTubeTranscriptApi
+    
+    reviews = []
+    
+    def process_video(vid):
+        try:
+            # Try transcript first
             try:
-                if transcripts_blocked:
-                    raise Exception("Transcripts blocked for this session.")
-                print(f"  [YouTube] Loading transcript for {vid}...")
                 transcript = YouTubeTranscriptApi().fetch(vid)
                 text = " ".join(t.text for t in transcript)[:2500]
                 if len(text) > 50:
-                    reviews.append({
+                    return {
                         "source": "YouTube",
                         "source_name": "YouTube",
                         "source_type": "Video",
@@ -152,32 +152,39 @@ def load_youtube_reviews(product_name: str, video_ids: List[str]) -> List[Dict]:
                         "rating": 3.5,
                         "text": text,
                         "date": datetime.now().strftime("%Y-%m-%d"),
-                    })
-                    print(f"    - Success: {len(text)} chars.")
+                    }
             except Exception as e:
-                err_msg = str(e)
-                if "IP has been blocked" in err_msg or "too many requests" in err_msg.lower() or transcripts_blocked:
-                    transcripts_blocked = True
-                    print(f"    - Rate-limited. Falling back to video description for {vid}...")
-                    text = _fetch_youtube_description(vid)
-                    if len(text) > 50:
-                        reviews.append({
-                            "source": "YouTube",
-                            "source_name": "YouTube",
-                            "source_type": "Video",
-                            "url": f"https://www.youtube.com/watch?v={vid}",
-                            "title": f"Video Review ({vid})",
-                            "product": product_name,
-                            "rating": 3.5,
-                            "text": text,
-                            "date": datetime.now().strftime("%Y-%m-%d"),
-                        })
-                        print(f"    - Got description: {len(text)} chars.")
-                else:
-                    print(f"    - Error: {e}")
-        return reviews
-    except Exception:
-        return []
+                err_msg = str(e).lower()
+                if "ip has been blocked" in err_msg or "too many requests" in err_msg:
+                    # Don't log rate limit for every single video to avoid clutter
+                    pass
+                
+            # Fallback to description
+            text = _fetch_youtube_description(vid)
+            if len(text) > 50:
+                return {
+                    "source": "YouTube",
+                    "source_name": "YouTube",
+                    "source_type": "Video",
+                    "url": f"https://www.youtube.com/watch?v={vid}",
+                    "title": f"Video Review ({vid})",
+                    "product": product_name,
+                    "rating": 3.5,
+                    "text": text,
+                    "date": datetime.now().strftime("%Y-%m-%d"),
+                }
+        except Exception:
+            pass
+        return None
+
+    with ThreadPoolExecutor(max_workers=5) as pool:
+        future_to_vid = {pool.submit(process_video, vid): vid for vid in video_ids}
+        for future in as_completed(future_to_vid):
+            res = future.result()
+            if res:
+                reviews.append(res)
+    
+    return reviews
 
 
 def load_amazon_reviews_web(product_name: str, limit: int = 20) -> List[Dict]:
@@ -192,7 +199,7 @@ def load_amazon_reviews_web(product_name: str, limit: int = 20) -> List[Dict]:
             "Accept-Language": "en-US,en;q=0.9",
         }
         q = urllib.parse.quote(product_name)
-        with httpx.Client(headers=headers, timeout=15, follow_redirects=True) as client:
+        with httpx.Client(headers=headers, timeout=10, follow_redirects=True) as client:
             resp = client.get(f"https://www.amazon.com/s?k={q}")
             soup = BeautifulSoup(resp.text, "lxml")
 
@@ -260,7 +267,7 @@ def load_bestbuy_reviews_web(product_name: str, limit: int = 20) -> List[Dict]:
                 "Chrome/124.0.0.0 Safari/537.36"
             ),
         }
-        with httpx.Client(headers=headers, timeout=15, follow_redirects=True) as client:
+        with httpx.Client(headers=headers, timeout=10, follow_redirects=True) as client:
             # Search BestBuy to find the product SKU
             resp = client.get(f"https://www.bestbuy.com/site/searchpage.jsp?st={q}")
             sku_m = re.search(r'"sku"\s*:\s*"?(\d{7,})"?', resp.text)
@@ -307,7 +314,7 @@ def _search_reviews_ddg(product_name: str, site: str, source_label: str, limit: 
     query = f'site:{site} "{product_name}" review'
     search_url = f"https://duckduckgo.com/lite/?q={urllib.parse.quote(query)}"
     
-    time.sleep(random.uniform(1.0, 2.5)) # Slightly longer delay
+    time.sleep(random.uniform(0.5, 1.2)) # Reduced delay for faster processing
     
     print(f"  [{source_label}] Attempting DDG Lite Fallback: {search_url}")
 
@@ -378,45 +385,44 @@ def collect_reviews(
     pasted_reviews: Optional[str] = None,
     youtube_ids: Optional[List[str]] = None,
 ) -> List[Dict]:
-    from concurrent.futures import ThreadPoolExecutor
+    from concurrent.futures import ThreadPoolExecutor, as_completed
 
     all_reviews: List[Dict] = []
 
     if pasted_reviews:
         all_reviews.extend(load_pasted_reviews(pasted_reviews, product_name))
 
-    # [NO LOCAL DATA POLICY] Removed load_file_reviews call to ensure every analysis is live.
-
     if not youtube_ids:
         youtube_ids = search_youtube_videos(product_name)
 
-    need_amazon = not any(r["source"] == "Amazon" for r in all_reviews)
-    need_bestbuy = not any(r["source"] == "BestBuy" for r in all_reviews)
-
-    # Run all three web scrapers concurrently
-    with ThreadPoolExecutor(max_workers=3) as pool:
+    # Run primary web scrapers concurrently
+    with ThreadPoolExecutor(max_workers=5) as pool:
         yt_future = pool.submit(load_youtube_reviews, product_name, youtube_ids or [])
-        az_future = pool.submit(load_amazon_reviews_web, product_name) if need_amazon else None
-        bb_future = pool.submit(load_bestbuy_reviews_web, product_name) if need_bestbuy else None
+        az_future = pool.submit(load_amazon_reviews_web, product_name)
+        bb_future = pool.submit(load_bestbuy_reviews_web, product_name)
 
         yt_reviews = yt_future.result()
-        az_reviews = az_future.result() if az_future else []
-        bb_reviews = bb_future.result() if bb_future else []
+        az_reviews = az_future.result()
+        bb_reviews = bb_future.result()
 
-    all_reviews.extend(yt_reviews)
-    all_reviews.extend(az_reviews)
-    all_reviews.extend(bb_reviews)
+        all_reviews.extend(yt_reviews)
+        all_reviews.extend(az_reviews)
+        all_reviews.extend(bb_reviews)
 
-    # Fallback: if Amazon or BestBuy direct scraping failed, try DuckDuckGo search
-    has_amazon = any(r.get("source") == "Amazon" for r in all_reviews)
-    has_bestbuy = any(r.get("source") == "BestBuy" for r in all_reviews)
-    
-    if not has_amazon:
-        print("  [Amazon] Direct scrape returned 0 results, trying DDG fallback...")
-        all_reviews.extend(_search_reviews_ddg(product_name, "amazon.com", "Amazon"))
-    
-    if not has_bestbuy:
-        print("  [BestBuy] Direct scrape returned 0 results, trying DDG fallback...")
-        all_reviews.extend(_search_reviews_ddg(product_name, "bestbuy.com", "BestBuy"))
+        # 2. Check for missing data and run fallbacks in parallel
+        has_amazon = any(r.get("source") == "Amazon" for r in all_reviews)
+        has_bestbuy = any(r.get("source") == "BestBuy" for r in all_reviews)
+        
+        fallback_futures = []
+        if not has_amazon:
+            print("  [Amazon] Direct scrape returned 0 results, queuing DDG fallback...")
+            fallback_futures.append(pool.submit(_search_reviews_ddg, product_name, "amazon.com", "Amazon"))
+        
+        if not has_bestbuy:
+            print("  [BestBuy] Direct scrape returned 0 results, queuing DDG fallback...")
+            fallback_futures.append(pool.submit(_search_reviews_ddg, product_name, "bestbuy.com", "BestBuy"))
+
+        for f in as_completed(fallback_futures):
+            all_reviews.extend(f.result())
 
     return all_reviews
