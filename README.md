@@ -2,8 +2,6 @@
 
 BuyWise is an advanced, AI-driven product analysis platform designed to help users make better purchasing decisions. By aggregating and analyzing reviews from multiple sources (Amazon, YouTube, and BestBuy), BuyWise provides a personalized "Fit Score" and deep insights tailored to your specific needs, budget, and priorities.
 
-![BuyWise Banner](https://images.unsplash.com/photo-1557821552-17105176677c?q=80&w=1600&auto=format&fit=crop)
-
 ## 🚀 Key Features
 
 - **Personalized Recommendations**: Input your budget, use case, and priorities (e.g., comfort, performance, durability) to get a tailored analysis.
