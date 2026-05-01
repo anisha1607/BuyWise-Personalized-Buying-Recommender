@@ -9,9 +9,11 @@ from routers import analyze, export
 
 app = FastAPI(title="BuyWise API", version="1.0.0")
 
+cors_origins = os.getenv("CORS_ORIGIN", "http://localhost:3000").split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -1,22 +1,20 @@
 import os
 import json
-import random
 import urllib.parse
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
 from typing import Dict, List, Optional, Any
 import traceback
 from datetime import datetime
 
-from agents.preference_agent import get_weights, ASPECTS
+from agents.preference_agent import ASPECTS
 from agents.data_collection_agent import collect_reviews
-from agents.cleaning_agent import clean_reviews, SOURCE_MAP
-from agents.aspect_agent import ASPECT_KEYWORDS as AGENT_KEYWORDS
+from agents.cleaning_agent import clean_reviews
+from agents.aspect_agent import ASPECT_KEYWORDS
 from services.llm_service import get_llm_response
 from services.synthesis_service import calculate_fit_score, generate_score_breakdown, detect_release_status
 from models import (
     AnalyzeRequest, AnalyzeResponse, ChatRequest, ChatResponse,
-    MarketIntelligence, Competitor, ScoreBreakdown
+    MarketIntelligence, Competitor
 )
 
 
@@ -153,7 +151,7 @@ def _analyze_internal(request: AnalyzeRequest):
     aspect_sentiments = llm_data.get("aspect_sentiments", {})
     if not isinstance(aspect_sentiments, dict) or not aspect_sentiments:
         # Initial estimate based on overall feel if specific aspects are missing
-        aspect_sentiments = {a: 0.5 for a in ["comfort", "price", "battery", "sound", "durability", "performance", "design", "connectivity"]}
+        aspect_sentiments = {a: 0.5 for a in ASPECTS}
     
     # Cleanup boilerplate "no recommendation" text from verdict array
     verdict_raw = llm_data.get("verdict", [])
@@ -289,7 +287,7 @@ def _analyze_internal(request: AnalyzeRequest):
                 txt = r.get("text", "").lower()
                 for asp, prio in priority_map.items():
                     weight = weight_values.get(prio, 1.5)
-                    if any(kw in txt for kw in AGENT_KEYWORDS.get(asp, [asp])):
+                    if any(kw in txt for kw in ASPECT_KEYWORDS.get(asp, [asp])):
                         s_sum += r.get("sentiment_score", 0) * weight
                         w_sum += weight
             return s_sum / w_sum if w_sum > 0 else 0
@@ -341,10 +339,6 @@ def _analyze_internal(request: AnalyzeRequest):
             }
 
     # 4. Aspect Summary Synthesis
-    from agents.preference_agent import ASPECTS
-    # Use the comprehensive keywords from the aspect agent for consistency
-    ASPECT_KEYWORDS = AGENT_KEYWORDS
-    
     aspect_summary = {}
     for aspect in ASPECTS:
         sentiment = aspect_sentiments.get(aspect, base_sentiment)
@@ -475,7 +469,7 @@ def _analyze_internal(request: AnalyzeRequest):
                     "title": e.get("claim", "AI Insight"),
                     "text": e.get("evidence_snippet", ""),
                     "rating": "AI",
-                    "date": "2026-05-01",
+                    "date": datetime.now().strftime("%Y-%m-%d"),
                 })
 
     # 9. Post-process verdict to ensure format is clean
@@ -507,11 +501,8 @@ def _analyze_internal(request: AnalyzeRequest):
     # 7. Market Intelligence Logic
     release_status = detect_release_status(request.product_name, reviews)
     raw_competitors = llm_data.get("market_intelligence", {}).get("competitors", [])
-    if not isinstance(raw_competitors, list) or len(raw_competitors) < 2:
-        raw_competitors = [
-            {"name": "Dell XPS 13", "link": "https://www.dell.com", "description": "Better for Windows users", "pros": ["Compact", "OLED"], "cons": ["Price"]},
-            {"name": "Bose QC45", "link": "https://www.bose.com", "description": "Better ANC", "pros": ["Comfort", "ANC"], "cons": ["Micro-USB"]}
-        ]
+    if not isinstance(raw_competitors, list):
+        raw_competitors = []
     
     competitors = [Competitor(
         name=c.get("name", "Alternative"),

@@ -321,10 +321,10 @@ def _search_reviews_ddg(product_name: str, site: str, source_label: str, limit: 
     try:
         with httpx.Client(headers=headers, timeout=15.0, follow_redirects=True) as client:
             resp = client.get(search_url)
-            if resp.status_code == 200:
+            if resp.status_code in (200, 202):  # 202 = DDG bot-detection soft-block; body may still have results
                 from bs4 import BeautifulSoup
                 soup = BeautifulSoup(resp.text, "lxml")
-                
+
                 # DDG Lite uses table rows for results
                 # Usually: <td class="result-title">, <td class="result-snippet">
                 rows = soup.find_all('tr')

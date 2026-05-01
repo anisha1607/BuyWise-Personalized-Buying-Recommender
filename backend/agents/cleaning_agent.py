@@ -26,7 +26,7 @@ def _normalize_rating(rating) -> float:
     except (TypeError, ValueError):
         return 3.0
     if r > 5:
-        r = r / 2.0
+        r = r / 2.0  # Convert 10-point scale (e.g. BestBuy API) to 5-point scale
     return max(1.0, min(5.0, r))
 
 

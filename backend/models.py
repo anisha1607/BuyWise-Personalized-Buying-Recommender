@@ -1,8 +1,8 @@
 from pydantic import BaseModel
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Literal, Optional, Any
 
 class Preferences(BaseModel):
-    budget: str = "mid"
+    budget: Literal["low", "mid", "high"] = "mid"
     use_case: str = "everyday"
     aspect_priorities: Dict[str, str] = {}
     deal_breakers: List[str] = []

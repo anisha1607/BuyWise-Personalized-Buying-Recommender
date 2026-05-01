@@ -95,9 +95,6 @@ export interface AnalyzeResponse {
   review_count: number;
   market_intelligence: MarketIntelligence;
   score_breakdown: ScoreBreakdown;
-  expert_reviews: Array<{ source: string; title: string; url: string; snippet: string }>;
-  tiktok_links: Array<{ url: string; label: string }>;
-  radar_data: Array<{ aspect: string; score: number }>;
   critical_take: string[];
   trade_offs: Array<{ label: string; description: string }>;
   raw_reviews: Array<{ source: string; source_type: string; url: string; title: string; text: string; rating: number | string; date: string }>;
