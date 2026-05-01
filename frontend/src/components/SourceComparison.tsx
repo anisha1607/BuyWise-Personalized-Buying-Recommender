@@ -37,9 +37,11 @@ function CustomTooltip({ active, payload, label }: any) {
       background: "var(--bg-3)", border: "1px solid var(--border)",
       borderRadius: 8, padding: "0.7rem", fontSize: "0.83rem",
     }}>
-      <div style={{ fontWeight: 600, marginBottom: "0.25rem" }}>{label}</div>
+      <div style={{ fontWeight: 600, marginBottom: "0.25rem" }}>{label}{d.estimated ? " (AI est.)" : ""}</div>
       <div>Sentiment: {d.avg_sentiment > 0 ? "+" : ""}{d.avg_sentiment.toFixed(2)}</div>
-      <div style={{ color: "var(--text-muted)" }}>{d.review_count} reviews</div>
+      <div style={{ color: "var(--text-muted)" }}>
+        {d.estimated ? "Based on AI knowledge" : `${d.review_count} reviews`}
+      </div>
     </div>
   );
 }
@@ -49,6 +51,7 @@ export default function SourceComparison({ sourceComparison }: Props) {
     source,
     avg_sentiment: d.avg_sentiment,
     review_count: d.review_count,
+    estimated: d.estimated ?? false,
   }));
 
   return (
@@ -83,7 +86,7 @@ export default function SourceComparison({ sourceComparison }: Props) {
               fontWeight: 500,
             }}
           >
-            {d.source} ({d.review_count})
+            {d.source} ({d.review_count}){d.estimated ? " · AI est." : ""}
           </span>
         ))}
       </div>

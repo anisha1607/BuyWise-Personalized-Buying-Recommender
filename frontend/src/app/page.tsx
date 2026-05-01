@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import type { AnalyzeRequest, AnalyzeResponse, Preferences } from "@/lib/api";
+import type { AnalyzeRequest, AnalyzeResponse, Preferences, MarketIntelligence } from "@/lib/api";
 import { analyzeProduct, askChat } from "@/lib/api";
 import FitScore from "@/components/FitScore";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
@@ -119,6 +119,74 @@ async function exportData(result: any, format: "json" | "csv") {
   URL.revokeObjectURL(url);
 }
 
+async function exportSources(result: any) {
+  const filename = `BuyWise_Sources_${result.product.replace(/\s+/g, '_')}`;
+  
+  const rows: string[] = [];
+  const seen = new Set<string>();
+  
+  const addRow = (row: string) => {
+    // Deduplicate by using a hash of the key fields (source + title + first 100 chars of text)
+    const key = row.slice(0, 300).toLowerCase();
+    if (!seen.has(key)) {
+      seen.add(key);
+      rows.push(row);
+    }
+  };
+  
+  // Section 1: All raw scraped reviews (per-source individual records)
+  if (result.raw_reviews && result.raw_reviews.length > 0) {
+    for (const r of result.raw_reviews) {
+      const source = (r.source || "Unknown").replace(/"/g, '""');
+      const sourceType = (r.source_type || "").replace(/"/g, '""');
+      const title = (r.title || "").replace(/"/g, '""');
+      const text = (r.text || "").replace(/"/g, '""');
+      const rating = r.rating ?? "";
+      const date = (r.date || "").replace(/"/g, '""');
+      const url = (r.url || "").replace(/"/g, '""');
+      addRow(`"${source}","Scraped Review","${sourceType}","${title}","${text}","${rating}","${date}","${url}"`);
+    }
+  }
+  
+  // Section 2: Source comparison summary (aggregate per platform)
+  if (result.source_comparison) {
+    for (const [source, data] of Object.entries(result.source_comparison as Record<string, any>)) {
+      const avgSent = data.avg_sentiment?.toFixed(2) ?? "N/A";
+      const count = data.review_count ?? 0;
+      const est = data.estimated ? " (AI estimated)" : "";
+      addRow(`"${source}","Source Summary${est}","Platform","${count} reviews analyzed","Avg sentiment: ${avgSent}","${count}","",""`);
+    }
+  }
+  
+  // Section 3: Evidence items (AI-extracted claims with references)
+  if (result.evidence && result.evidence.length > 0) {
+    for (const e of result.evidence) {
+      const source = (e.source_name || "Unknown").replace(/"/g, '""');
+      const sourceType = (e.source_type || "").replace(/"/g, '""');
+      const claim = (e.claim || "").replace(/"/g, '""');
+      const text = (e.evidence_snippet || "").replace(/"/g, '""');
+      const sentiment = e.sentiment || "neutral";
+      const supports = e.supports || "";
+      const url = (e.source_url || "").replace(/"/g, '""');
+      const recordType = e.estimated ? "Evidence (AI estimated)" : "Evidence";
+      addRow(`"${source}","${recordType}","${sourceType}","${claim}","${text}","${sentiment} / ${supports}","","${url}"`);
+    }
+  }
+  
+  const headers = "Source,Record Type,Source Type,Title/Claim,Review Text/Snippet,Rating/Sentiment,Date,URL\n";
+  const csv = headers + rows.join("\n");
+  
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `${filename}.csv`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
+
 const SectionLabel = ({ title }: { title: string }) => (
   <div style={{
     color: "var(--text-muted)", fontSize: "0.74rem", fontWeight: 600,
@@ -226,7 +294,7 @@ function PreferencesStep({
     }));
 
   const handleSubmit = () => {
-    onAnalyze(prefs, pasted);
+    onAnalyze(prefs, pasted, []);
   };
 
 
@@ -580,13 +648,23 @@ function LoadingStep({ product }: { product: string }) {
 
 /* ─── Step 4: Dashboard ─── */
 function DashboardStep({ result, onReset }: { result: AnalyzeResponse; onReset: () => void }) {
-  const [activeTab, setActiveTab] = useState<"verdict" | "sentiment" | "trust" | "evidence">("verdict");
+  const [activeTab, setActiveTab] = useState<"verdict" | "sentiment" | "catch" | "trust" | "evidence">("verdict");
   const [exporting, setExporting] = useState(false);
 
   const handleExport = async (fmt: "json" | "csv") => {
     setExporting(true);
     try { await exportData(result, fmt); } finally { setExporting(false); }
   };
+
+  const handleExportSources = async () => {
+    setExporting(true);
+    try { await exportSources(result); } finally { setExporting(false); }
+  };
+
+  // Calculate total reviews from source_comparison for accurate display
+  const totalReviews = result.source_comparison
+    ? Object.values(result.source_comparison).reduce((sum: number, s: any) => sum + (s.review_count || 0), 0)
+    : result.review_count;
 
   const TabButton = ({ id, label, icon }: { id: typeof activeTab | "catch", label: string, icon: string }) => (
     <button 
@@ -629,11 +707,12 @@ function DashboardStep({ result, onReset }: { result: AnalyzeResponse; onReset: 
             ← New Search
           </button>
           <h1 style={{ fontFamily: "var(--font-serif)", fontSize: "1.8rem" }}>{result.product}</h1>
-          <p style={{ color: "var(--text-muted)", fontSize: "0.83rem" }}>{result.review_count} reviews analyzed</p>
+          <p style={{ color: "var(--text-muted)", fontSize: "0.83rem" }}>{totalReviews} reviews analyzed</p>
         </div>
-        <div style={{ display: "flex", gap: "0.5rem" }}>
+        <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
           <button className="btn-ghost" style={{ fontSize: "0.8rem" }} onClick={() => handleExport("json")}>Export JSON</button>
           <button className="btn-ghost" style={{ fontSize: "0.8rem" }} onClick={() => handleExport("csv")}>Export CSV</button>
+          <button className="btn-ghost" style={{ fontSize: "0.8rem" }} onClick={handleExportSources}>Export Sources</button>
         </div>
       </div>
 

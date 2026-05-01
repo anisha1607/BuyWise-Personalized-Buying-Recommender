@@ -295,6 +295,54 @@ def load_bestbuy_reviews_web(product_name: str, limit: int = 20) -> List[Dict]:
         return []
 
 
+def _search_reviews_ddg(product_name: str, site: str, source_label: str, limit: int = 5) -> List[Dict]:
+    """
+    Fallback: search DuckDuckGo for review snippets from a specific site.
+    Used when direct scraping fails (anti-bot blocks, CAPTCHAs, etc.)
+    """
+    results = []
+    query = f'site:{site} "{product_name}" review'
+    search_url = f"https://duckduckgo.com/html/?q={query.replace(' ', '+')}"
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+    }
+
+    try:
+        with httpx.Client(headers=headers, timeout=15, follow_redirects=True) as client:
+            resp = client.get(search_url)
+            if resp.status_code == 200:
+                from bs4 import BeautifulSoup
+                soup = BeautifulSoup(resp.text, "lxml")
+                items = soup.find_all('div', class_=re.compile(r'result|links_main'))[:limit]
+                
+                for item in items:
+                    title_el = item.find(['a', 'h2'], class_=re.compile(r'result__a|result__title'))
+                    snippet_el = item.find('a', class_=re.compile(r'result__snippet'))
+                    
+                    if title_el and snippet_el:
+                        title = title_el.get_text(strip=True)
+                        snippet = snippet_el.get_text(strip=True)
+                        link = title_el.get('href') if title_el.name == 'a' else ""
+                        if link and len(snippet) > 30:
+                            results.append({
+                                "source": source_label,
+                                "source_name": source_label,
+                                "source_type": "Retailer" if source_label in ("Amazon", "BestBuy") else "Web",
+                                "url": link,
+                                "title": title,
+                                "text": f"{title}: {snippet}",
+                                "product": product_name,
+                                "rating": 3.0,
+                                "date": datetime.now().strftime("%Y-%m-%d"),
+                            })
+    except Exception as e:
+        print(f"  [{source_label}] DDG fallback search failed: {e}")
+        
+    print(f"  [{source_label}] DDG fallback found {len(results)} results")
+    return results
+
+
 def collect_reviews(
     product_name: str,
     pasted_reviews: Optional[str] = None,
@@ -328,5 +376,17 @@ def collect_reviews(
     all_reviews.extend(yt_reviews)
     all_reviews.extend(az_reviews)
     all_reviews.extend(bb_reviews)
+
+    # Fallback: if Amazon or BestBuy direct scraping failed, try DuckDuckGo search
+    has_amazon = any(r.get("source") == "Amazon" for r in all_reviews)
+    has_bestbuy = any(r.get("source") == "BestBuy" for r in all_reviews)
+    
+    if not has_amazon:
+        print("  [Amazon] Direct scrape returned 0 results, trying DDG fallback...")
+        all_reviews.extend(_search_reviews_ddg(product_name, "amazon.com", "Amazon"))
+    
+    if not has_bestbuy:
+        print("  [BestBuy] Direct scrape returned 0 results, trying DDG fallback...")
+        all_reviews.extend(_search_reviews_ddg(product_name, "bestbuy.com", "BestBuy"))
 
     return all_reviews

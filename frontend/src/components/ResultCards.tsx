@@ -62,8 +62,10 @@ interface EvidenceProps {
 
 function EvidenceCard({ e }: { e: Evidence }) {
   const color = e.sentiment === "positive" ? "var(--green)" : e.sentiment === "negative" ? "var(--red)" : "var(--amber)";
-  const srcName = e.source_name || e.source_url || "External Source";
+  const srcName = e.source_name || "External Source";
   const typeLabel = e.source_type ? ` • ${e.source_type}` : "";
+  const displayUrl = e.source_url || "";
+  const isEstimated = e.estimated ?? false;
   
   return (
     <div
@@ -82,22 +84,47 @@ function EvidenceCard({ e }: { e: Evidence }) {
         &ldquo;{e.evidence_snippet}&rdquo;
       </p>
       <div style={{ display: "flex", gap: "0.4rem", alignItems: "center", flexWrap: "wrap" }}>
-        {e.source_url ? (
-          <a 
-            href={e.source_url} 
-            target="_blank" 
-            rel="noopener noreferrer"
-            style={{ fontSize: "0.7rem", color: "var(--text-muted)", textDecoration: "underline" }}
-            title={srcName}
-          >
-            {srcName}{typeLabel} ↗
-          </a>
-        ) : (
-          <span style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>
-            {srcName}{typeLabel}
+        <span style={{ fontSize: "0.7rem", color: "var(--text-muted)" }}>
+          {srcName}{typeLabel}
+        </span>
+        {isEstimated && (
+          <span style={{
+            fontSize: "0.62rem",
+            color: "var(--amber)",
+            background: "rgba(245,166,35,.12)",
+            border: "1px solid rgba(245,166,35,.25)",
+            borderRadius: 4,
+            padding: "0.1rem 0.35rem",
+            fontWeight: 600,
+          }}>
+            AI est.
           </span>
         )}
       </div>
+      {displayUrl ? (
+        <a
+          href={displayUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: "0.3rem",
+            fontSize: "0.7rem",
+            color: "var(--accent)",
+            textDecoration: "underline",
+            marginTop: "0.35rem",
+            wordBreak: "break-all",
+          }}
+          title={displayUrl}
+        >
+          🔗 {displayUrl.length > 60 ? displayUrl.slice(0, 60) + "…" : displayUrl}
+        </a>
+      ) : (
+        <span style={{ fontSize: "0.68rem", color: "var(--text-muted)", marginTop: "0.35rem", display: "block", fontStyle: "italic" }}>
+          No direct link available
+        </span>
+      )}
     </div>
   );
 }

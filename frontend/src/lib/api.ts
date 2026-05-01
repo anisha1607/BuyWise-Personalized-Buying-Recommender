@@ -21,6 +21,7 @@ export interface AspectData {
 export interface SourceData {
   avg_sentiment: number;
   review_count: number;
+  estimated?: boolean;
 }
 
 export interface Contradiction {
@@ -39,6 +40,7 @@ export interface Evidence {
   source_url: string;
   sentiment: "positive" | "negative" | "neutral";
   supports: "pros" | "cons" | "verdict" | "verification";
+  estimated?: boolean;
 }
 
 export interface PrefVsReality {
@@ -75,6 +77,9 @@ export interface AnalyzeResponse {
   expert_reviews: Array<{ source: string; title: string; url: string; snippet: string }>;
   tiktok_links: Array<{ url: string; label: string }>;
   radar_data: Array<{ aspect: string; score: number }>;
+  critical_take: string;
+  trade_offs: Array<{ label: string; description: string }>;
+  raw_reviews: Array<{ source: string; source_type: string; url: string; title: string; text: string; rating: number | string; date: string }>;
 }
 
 export async function askChat(

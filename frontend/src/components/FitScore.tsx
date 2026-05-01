@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 
 const RADIUS = 70;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
@@ -12,8 +12,8 @@ function scoreColor(score: number) {
 
 interface Props {
   score: number;
-  verdict: string;
-  hypothesis: string;
+  verdict: ReactNode;
+  hypothesis: ReactNode;
   dealBreakerFlags: string[];
 }
 
@@ -102,9 +102,7 @@ export default function FitScore({ score, verdict, hypothesis, dealBreakerFlags 
             ))}
           </div>
         )}
-        <p style={{ fontSize: "0.78rem", color: "var(--text-muted)", fontStyle: "italic", marginTop: "1.25rem", borderTop: "1px solid var(--bg-3)", paddingTop: "0.75rem" }}>
-          Synthesizing verified web consensus with your unique priorities and personal recommendations.
-        </p>
+
       </div>
     </div>
   );
