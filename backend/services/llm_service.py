@@ -2,6 +2,7 @@ import os
 import json
 import httpx
 from groq import Groq
+from datetime import datetime
 import re
 from typing import Dict, Any, Optional
 
@@ -9,8 +10,23 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 HF_API_TOKEN = os.getenv("HF_TOKEN")  # User should provide this in .env if needed
 
 # Configuration
-PRIMARY_MODEL = "llama-3.1-8b-instant" # Groq version of Grok-like power
+PRIMARY_MODEL = "llama-3.3-70b-versatile" 
 HF_FALLBACK_MODEL = "mistralai/Mistral-7B-Instruct-v0.3"
+
+def log_usage(model: str, usage: Dict[str, Any]):
+    """Logs token usage to a local file."""
+    try:
+        with open("token_usage.log", "a") as f:
+            log_entry = {
+                "timestamp": datetime.now().isoformat(),
+                "model": model,
+                "prompt_tokens": usage.get("prompt_tokens", 0),
+                "completion_tokens": usage.get("completion_tokens", 0),
+                "total_tokens": usage.get("total_tokens", 0)
+            }
+            f.write(json.dumps(log_entry) + "\n")
+    except Exception as e:
+        print(f"[LLMService] Error logging usage: {e}")
 
 def get_llm_response(prompt: str, schema: Optional[Dict] = None) -> Optional[Dict[str, Any]]:
     """
@@ -21,7 +37,7 @@ def get_llm_response(prompt: str, schema: Optional[Dict] = None) -> Optional[Dic
     # 1. Try Primary LLM (Groq/Grok)
     if GROQ_API_KEY:
         try:
-            print(f"[LLMService] Attempting Primary LLM (Groq: {PRIMARY_MODEL})...")
+            print(f"[LLMService] Attempting Primary LLM (Groq: {PRIMARY_MODEL}, Schema: {schema is not None})...")
             client = Groq(api_key=GROQ_API_KEY)
             
             completion_params = {
@@ -34,9 +50,21 @@ def get_llm_response(prompt: str, schema: Optional[Dict] = None) -> Optional[Dic
             res = client.chat.completions.create(**completion_params)
             content = res.choices[0].message.content
             
+            # Log Usage
+            if hasattr(res, "usage"):
+                log_usage(PRIMARY_MODEL, {
+                    "prompt_tokens": res.usage.prompt_tokens,
+                    "completion_tokens": res.usage.completion_tokens,
+                    "total_tokens": res.usage.total_tokens
+                })
+
+            if not schema:
+                print(f"[LLMService] SUCCESS: Primary LLM ({PRIMARY_MODEL}) used for text response.")
+                return content
+
             try:
                 data = json.loads(content)
-                print(f"[LLMService] SUCCESS: Primary LLM ({PRIMARY_MODEL}) used.")
+                print(f"[LLMService] SUCCESS: Primary LLM ({PRIMARY_MODEL}) used for JSON response.")
                 return data
             except json.JSONDecodeError:
                 print(f"[LLMService] FAILURE: Primary LLM returned invalid JSON.")
@@ -76,14 +104,29 @@ def get_llm_response(prompt: str, schema: Optional[Dict] = None) -> Optional[Dic
                 else:
                     text = str(raw_res)
 
+                # Log Usage (Simulated for HF)
+                log_usage(HF_FALLBACK_MODEL, {
+                    "prompt_tokens": len(hf_prompt) // 4,
+                    "completion_tokens": len(text) // 4,
+                    "total_tokens": (len(hf_prompt) + len(text)) // 4
+                })
+
+                # If no schema, return text directly
+                if not schema:
+                    print(f"[LLMService] SUCCESS: Fallback LLM ({HF_FALLBACK_MODEL}) used for text response.")
+                    return text
+
                 # Try to extract JSON if it's wrapped in markdown or filler
                 json_match = re.search(r'(\{.*\})', text, re.DOTALL)
                 if json_match:
                     text = json_match.group(1)
                 
-                data = json.loads(text)
-                print(f"[LLMService] SUCCESS: Fallback LLM ({HF_FALLBACK_MODEL}) used.")
-                return data
+                try:
+                    data = json.loads(text)
+                    print(f"[LLMService] SUCCESS: Fallback LLM ({HF_FALLBACK_MODEL}) used for JSON response.")
+                    return data
+                except json.JSONDecodeError:
+                    print(f"[LLMService] FAILURE: Fallback LLM returned invalid JSON.")
             else:
                 print(f"[LLMService] FAILURE: HuggingFace API returned status {response.status_code}: {response.text}")
     except Exception as e:
@@ -99,9 +142,11 @@ def _generate_simulated_response(prompt: str, schema: Optional[Dict]) -> Any:
     # Check if this is a chat request or an analysis request
     if not schema:
         # Simple chat fallback
-        if "pros" in prompt.lower():
-            return "Based on common user feedback, the main pros include excellent build quality, intuitive controls, and strong overall performance."
-        return "I'm currently in offline mode, but I can tell you that this product generally receives positive marks for its reliability and design."
+        if "battery" in prompt.lower():
+            return "Based on user reviews, the battery life is generally solid, lasting around 10-12 hours for most users."
+        if "alternative" in prompt.lower() or "other" in prompt.lower():
+            return "Good alternatives include the Dell XPS 13 or the HP Envy, depending on your budget."
+        return "I'm currently in offline mode, but I can tell you that this product generally receives positive marks."
 
     # Analysis JSON fallback
     return {

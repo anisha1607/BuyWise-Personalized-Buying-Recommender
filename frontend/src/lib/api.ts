@@ -53,16 +53,36 @@ export interface PrefVsReality {
 }
 
 export interface MarketIntelligence {
-  competitors: { name: string; why: string; price_diff: string }[];
+  competitors: Array<{
+    name: string;
+    link: string;
+    description: string;
+    pros: string[];
+    cons: string[];
+  }>;
   value_badge: "Great Value" | "Fair Price" | "Premium" | "Overpriced";
+  value_score: number;
   release_status: string;
   sentiment_trend: "improving" | "stable" | "declining";
+}
+
+export interface ScoreComponent {
+  label: string;
+  score: number;
+  max_score: number;
+  weight_pct: number;
+  contribution: number;
+}
+
+export interface ScoreBreakdown {
+  components: ScoreComponent[];
+  overall_explanation: string;
 }
 
 export interface AnalyzeResponse {
   product: string;
   fit_score: number;
-  verdict: string;
+  verdict: string[];
   hypothesis: string;
   aspect_summary: Record<string, AspectData>;
   source_comparison: Record<string, SourceData>;
@@ -74,10 +94,11 @@ export interface AnalyzeResponse {
   deal_breaker_flags: string[];
   review_count: number;
   market_intelligence: MarketIntelligence;
+  score_breakdown: ScoreBreakdown;
   expert_reviews: Array<{ source: string; title: string; url: string; snippet: string }>;
   tiktok_links: Array<{ url: string; label: string }>;
   radar_data: Array<{ aspect: string; score: number }>;
-  critical_take: string;
+  critical_take: string[];
   trade_offs: Array<{ label: string; description: string }>;
   raw_reviews: Array<{ source: string; source_type: string; url: string; title: string; text: string; rating: number | string; date: string }>;
 }
@@ -112,16 +133,31 @@ export async function askChat(
 }
 
 export async function analyzeProduct(req: AnalyzeRequest): Promise<AnalyzeResponse> {
-  const res = await fetch("/api/analyze", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(req),
-  });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Analysis failed: ${err}`);
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 120000); // 2 minute timeout
+  
+  try {
+    const res = await fetch("/api/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req),
+      signal: controller.signal,
+    });
+    
+    clearTimeout(timeoutId);
+    
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error(`Analysis failed: ${err}`);
+    }
+    return res.json();
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      throw new Error("Analysis timed out. The product search is taking longer than usual, please try again in a moment.");
+    }
+    throw error;
   }
-  return res.json();
 }
 
 export async function exportData(data: AnalyzeResponse, format: "json" | "csv"): Promise<void> {

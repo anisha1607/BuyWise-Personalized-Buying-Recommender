@@ -1,99 +1,139 @@
 # BuyWise - Personalized Buying Recommender
 
-BuyWise is an advanced, AI-driven product analysis platform designed to help users make better purchasing decisions. By aggregating and analyzing reviews from multiple sources (Amazon, YouTube, and BestBuy), BuyWise provides a personalized "Fit Score" and deep insights tailored to your specific needs, budget, and priorities.
+BuyWise is an advanced, AI-driven product analysis platform designed to transform **unstructured product data** (reviews, transcripts, expert snippets) into **structured market intelligence**. 
+
+By aggregating and analyzing data from multiple sources (Amazon, YouTube, BestBuy, and Personal Recommendations), BuyWise provides a deterministic "Fit Score" and deep insights tailored to your specific needs, budget, and priorities.
+
+## 🏗️ System Architecture
+
+```mermaid
+graph TD
+    subgraph "Input Layer"
+        User[User Product + Preferences]
+        Personal[Contact Recommendation]
+    end
+
+    subgraph "Multi-Agent Collection (The Hunters)"
+        YT[YouTube Agent: Transcripts]
+        Amazon[Amazon Scraper: Reviews]
+        Web[DDG Fallback Agent: Snippets]
+    end
+
+    subgraph "Processing Layer (The Filter)"
+        Clean[Cleaning Agent: Deduplication & Date Normalization]
+        VADER[VADER Engine: Feature-Level Sentiment]
+    end
+
+    subgraph "Analysis Layer (The Brain)"
+        LLM[Llama 3.3 70B: Reasoning & Synthesis]
+        Score[Deterministic Formula: Fit Score & Value Score]
+        Service[Synthesis Service: Deterministic Logic Layer]
+    end
+
+    subgraph "Output Layer (The Dashboard)"
+        DB[Interactive React UI]
+        CSV[Audit Trail: CSV Export]
+    end
+
+    User --> YT & Amazon & Web
+    Personal --> LLM
+    YT & Amazon & Web --> Clean
+    Clean --> VADER & LLM
+    VADER --> Score
+    LLM --> Score
+    Score --> Service
+    Service --> DB & CSV
+```
 
 ## 🚀 Key Features
 
-- **Personalized Recommendations**: Input your budget, use case, and priorities (e.g., comfort, performance, durability) to get a tailored analysis.
-- **Multi-Source Scraper**: Automatically pulls data from Amazon reviews, YouTube transcripts, and BestBuy listings.
-- **Multi-Agent AI System**:
-  - **Data Collection Agent**: Orchestrates scrapers for live product data.
-  - **Critical Agent**: Provides a "skeptical" expert view, highlighting trade-offs that others might miss.
-  - **Preference Agent**: Maps user needs to technical product aspects.
-  - **EDA & Aspect Agents**: Perform sentiment analysis and technical breakdown of features.
-- **Evidence-Based Verdicts**: Every claim is backed by real snippets from the web, complete with source links.
-- **Interactive AI Chat**: Ask specific questions about a product (e.g., "Is this good for long commutes?") and get answers based on analyzed reviews.
-- **Market Intelligence**: View competitor comparisons, price value badges, and sentiment trends.
+- **Unstructured to Structured Transformation**: Converts messy human reviews into numerical scores, sentiment bars, and pros/cons lists.
+- **Deterministic Fit Score**: A strictly weighted mathematical formula that combines your priorities with extracted sentiment. No "AI guesswork."
+- **Market Intelligence**:
+    - **Value Assessment**: Deterministic calculation of product value based on performance vs. your specific budget.
+    - **Sentiment Trend**: Preference-weighted comparison of recent vs. older reviews.
+    - **Release Status**: Automated detection of newer models (e.g., M1 vs M4).
+- **Personal Contact Integration**: Seamlessly injects recommendations from your trusted contacts into the broader market analysis.
+- **Explainable AI**: The "Score Breakdown" component explains exactly how every point in your score was earned.
+- **Evidence-Based Audit Trail**: Every claim links back to the original source. Export your findings to CSV for a full paper trail.
 
 ## 🛠️ Technology Stack
 
 ### Backend
 - **Framework**: [FastAPI](https://fastapi.tiangolo.com/) (Python)
-- **AI Models**: [Groq](https://groq.com/) (Llama 3.1) for primary analysis, [HuggingFace](https://huggingface.co/) for fallback.
-- **Data Processing**: Pandas, NumPy, VADER Sentiment Analysis.
-- **NLP**: Sentence Transformers for semantic search and relevance.
+- **AI Models**: [Groq](https://groq.com/) (Llama 3.3 70B) for synthesis.
+- **Logic Engine**: Custom Service Layer for deterministic scoring and version detection.
+- **Sentiment**: VADER for high-speed, sentence-level intensity scoring.
 - **Scraping**: BeautifulSoup4, HTTPX, YouTube Transcript API.
+
+## ⚖️ Deterministic Logic & Rationale
+
+BuyWise intentionally moves away from "black-box" AI scoring. Every metric on the dashboard is calculated using deterministic formulas. This ensures that the same input and same preferences **always** produce the same result—critical for professional market intelligence.
+
+### 1. Personalized Fit Score
+**Formula:** `Score = (Σ (Sentiment_Aspect * Weight_Priority) / Σ Weight) - Penalties`
+*   **Rationale**: Instead of asking an LLM "is this a good product?", we extract sentiment for specific features (Comfort, Sound, etc.) and multiply them by your custom weights (High=3.0, Med=1.5, Low=0.5).
+*   **Deal-Breaker Penalty**: If a feature you labeled as a "Deal Breaker" has a negative sentiment, the system applies a **-20 point penalty** per failure. This mimics human decision-making: one major flaw can ruin a great product.
+
+### 2. Value Assessment
+**Formula:** `Value_Score = (Fit_Score / 10) * Budget_Multiplier`
+*   **Multipliers**: `Low Budget: 1.2x | Mid: 1.0x | High: 0.8x`
+*   **Rationale**: "Value" is subjective. A great product at a high budget is "Premium," but the same product at a low budget is a "Steal." Our logic penalizes expensive products in value scores to reward price-efficiency.
+
+### 3. Sentiment Trend
+**Logic**: Compares the weighted sentiment of the most recent 50% of reviews against the older 50%.
+*   **Rationale**: Products change over time (firmware updates, manufacturing shifts). By weighting the trend by *your* priorities, we tell you if the product is getting better or worse in the areas **you** actually care about.
+
+### 4. Release Status Detection
+**Logic**: Scans for version strings (M1, M2, Pro, Gen 2) in the product name vs. the latest review mentions.
+*   **Rationale**: Avoids recommending a "latest" product if reviews mention a newer version exists, preventing buyer's remorse.
 
 ### Frontend
 - **Framework**: [Next.js 14](https://nextjs.org/) (React)
 - **Language**: TypeScript
-- **Styling**: Tailwind CSS for a premium, responsive UI.
-- **Visualization**: [Recharts](https://recharts.org/) for sentiment and aspect distribution.
+- **Visualization**: [Recharts](https://recharts.org/) for preference-vs-reality and sentiment distribution.
 
-## 📦 Installation & Setup
+## 📦 Project Structure
 
-### Prerequisites
-- Python 3.9+
-- Node.js 18+
-- [Groq API Key](https://console.groq.com/)
-
-### 1. Clone the Repository
-```bash
-git clone https://github.com/anisha1607/BuyWise-Personalized-Buying-Recommender.git
-cd BuyWise-Personalized-Buying-Recommender
+```text
+├── backend/
+│   ├── agents/           # Specialized AI agents (Cleaning, Aspect, EDA)
+│   ├── routers/          # API endpoints (Analyze, Export)
+│   ├── services/         # Business logic layer (Synthesis, LLM)
+│   ├── models.py         # Centralized Pydantic schemas
+│   ├── scripts/          # Maintenance and utility scripts
+│   └── tests/            # LLM and Analysis unit tests
+├── frontend/
+│   ├── src/app/          # Main dashboard UI
+│   ├── src/components/   # Reusable UI cards and charts
+│   └── src/lib/          # API client and TypeScript types
+└── start.py              # Main project entry point
 ```
 
-### 2. Backend Setup
+## 🛠️ Setup Instructions
+
+### 1. Backend Setup
 ```bash
 cd backend
 python -m venv venv
-source venv/bin/scripts/activate  # On Windows: venv\Scripts\activate
+source venv/bin/activate  # On Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-Create a `.env` file in the `backend` directory (or use the one in the root):
-```env
-GROQ_API_KEY=your_key_here
-HF_TOKEN=your_optional_hf_token_here
-```
-
-Start the FastAPI server:
+### 2. Frontend Setup
 ```bash
-uvicorn main:app --reload
-```
-
-### 3. Frontend Setup
-```bash
-cd ../frontend
+cd frontend
 npm install
 npm run dev
 ```
-Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-## 🏗️ Architecture
-
-BuyWise uses a modular **Multi-Agent Orchestration** pattern:
-
-1. **User Interface**: Collects preferences and product search terms.
-2. **Preference Agent**: Translates "everyday use" into specific weights for aspects like "comfort" or "battery".
-3. **Data Pipeline**: Scrapers fetch raw HTML/Transcripts; the **Cleaning Agent** sanitizes them.
-4. **Analysis Engine**:
-   - **LLM Service**: Summarizes data into JSON format.
-   - **Sentiment Engine**: Assigns scores to specific product features.
-5. **Synthesis**: The **Critical Agent** adds a final layer of expert nuance before presenting the dashboard.
-
-### ⚖️ Architectural Tradeoffs
-
-| Choice | Pro | Con |
-| :--- | :--- | :--- |
-| **Multi-Agent Orchestration** | Superior reasoning and modularity; agents can be refined independently. | Increased latency due to sequential LLM calls and complex state management. |
-| **Hybrid LLM Strategy** | High performance with Groq (Llama 3) and high reliability with HF fallbacks. | Requires managing multiple API keys and handling diverse response schemas. |
-| **Live Scraping** | Access to fresh, raw data (YouTube transcripts, Amazon reviews) without API costs. | Fragile to UI changes; requires constant maintenance of scrapers. |
-| **Client-Side API Proxy** | Simplified frontend logic and avoidance of CORS issues during development. | Adds a small layer of overhead; requires a running backend server for all requests. |
+### 3. Run Everything
+Use the root runner:
+```bash
+python start.py
+```
 
 ## 📄 License
 
 Distributed under the MIT License. See `LICENSE` for more information.
 
----
-*Built for the intersection of AI and Commerce.*

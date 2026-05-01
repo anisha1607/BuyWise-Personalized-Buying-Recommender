@@ -3,15 +3,9 @@ import csv
 import json
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse, JSONResponse
-from pydantic import BaseModel
-from typing import Any, Dict
+from models import ExportRequest
 
 router = APIRouter()
-
-
-class ExportRequest(BaseModel):
-    format: str = "json"
-    data: Dict[str, Any]
 
 
 @router.post("/export")

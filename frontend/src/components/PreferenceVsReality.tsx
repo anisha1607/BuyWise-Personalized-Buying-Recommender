@@ -7,9 +7,10 @@ interface Props {
 }
 
 function labelColor(label: string) {
-  if (label === "positive") return "var(--green)";
-  if (label === "negative") return "var(--red)";
-  return "var(--amber)";
+    if (label === "positive") return "var(--green)";
+    if (label === "negative") return "var(--red)";
+    if (label === "no data") return "var(--text-muted)";
+    return "var(--amber)";
 }
 
 function Bar({ row, delay }: { row: PrefVsReality; delay: number }) {

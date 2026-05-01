@@ -133,8 +133,11 @@ def load_youtube_reviews(product_name: str, video_ids: List[str]) -> List[Dict]:
     try:
         from youtube_transcript_api import YouTubeTranscriptApi
         reviews = []
+        transcripts_blocked = False
         for vid in video_ids:
             try:
+                if transcripts_blocked:
+                    raise Exception("Transcripts blocked for this session.")
                 print(f"  [YouTube] Loading transcript for {vid}...")
                 transcript = YouTubeTranscriptApi().fetch(vid)
                 text = " ".join(t.text for t in transcript)[:2500]
@@ -153,7 +156,8 @@ def load_youtube_reviews(product_name: str, video_ids: List[str]) -> List[Dict]:
                     print(f"    - Success: {len(text)} chars.")
             except Exception as e:
                 err_msg = str(e)
-                if "IP has been blocked" in err_msg or "too many requests" in err_msg.lower():
+                if "IP has been blocked" in err_msg or "too many requests" in err_msg.lower() or transcripts_blocked:
+                    transcripts_blocked = True
                     print(f"    - Rate-limited. Falling back to video description for {vid}...")
                     text = _fetch_youtube_description(vid)
                     if len(text) > 50:
@@ -169,8 +173,6 @@ def load_youtube_reviews(product_name: str, video_ids: List[str]) -> List[Dict]:
                             "date": datetime.now().strftime("%Y-%m-%d"),
                         })
                         print(f"    - Got description: {len(text)} chars.")
-                    else:
-                        print(f"    - Description also unavailable for {vid}.")
                 else:
                     print(f"    - Error: {e}")
         return reviews
@@ -301,43 +303,71 @@ def _search_reviews_ddg(product_name: str, site: str, source_label: str, limit: 
     Used when direct scraping fails (anti-bot blocks, CAPTCHAs, etc.)
     """
     results = []
+    import random, time
     query = f'site:{site} "{product_name}" review'
-    search_url = f"https://duckduckgo.com/html/?q={query.replace(' ', '+')}"
+    search_url = f"https://duckduckgo.com/lite/?q={urllib.parse.quote(query)}"
     
+    time.sleep(random.uniform(1.0, 2.5)) # Slightly longer delay
+    
+    print(f"  [{source_label}] Attempting DDG Lite Fallback: {search_url}")
+
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.5",
+        "Referer": "https://duckduckgo.com/",
     }
 
     try:
-        with httpx.Client(headers=headers, timeout=15, follow_redirects=True) as client:
+        with httpx.Client(headers=headers, timeout=15.0, follow_redirects=True) as client:
             resp = client.get(search_url)
             if resp.status_code == 200:
                 from bs4 import BeautifulSoup
                 soup = BeautifulSoup(resp.text, "lxml")
-                items = soup.find_all('div', class_=re.compile(r'result|links_main'))[:limit]
                 
-                for item in items:
-                    title_el = item.find(['a', 'h2'], class_=re.compile(r'result__a|result__title'))
-                    snippet_el = item.find('a', class_=re.compile(r'result__snippet'))
+                # DDG Lite uses table rows for results
+                # Usually: <td class="result-title">, <td class="result-snippet">
+                rows = soup.find_all('tr')
+                
+                for i in range(len(rows)):
+                    row = rows[i]
+                    # Title is usually in an 'a' inside a 'td'
+                    title_a = row.find('a', class_='result-link')
+                    if not title_a: continue
                     
-                    if title_el and snippet_el:
-                        title = title_el.get_text(strip=True)
-                        snippet = snippet_el.get_text(strip=True)
-                        link = title_el.get('href') if title_el.name == 'a' else ""
-                        if link and len(snippet) > 30:
-                            results.append({
-                                "source": source_label,
-                                "source_name": source_label,
-                                "source_type": "Retailer" if source_label in ("Amazon", "BestBuy") else "Web",
-                                "url": link,
-                                "title": title,
-                                "text": f"{title}: {snippet}",
-                                "product": product_name,
-                                "rating": 3.0,
-                                "date": datetime.now().strftime("%Y-%m-%d"),
-                            })
+                    # Snippet is often in the NEXT row for Lite version, or same row
+                    snippet = ""
+                    snippet_td = row.find('td', class_='result-snippet')
+                    if snippet_td:
+                        snippet = snippet_td.get_text(strip=True)
+                    elif i + 1 < len(rows):
+                        # Fallback: check next row
+                        next_row_text = rows[i+1].get_text(strip=True)
+                        if len(next_row_text) > 40 and "result-link" not in str(rows[i+1]):
+                            snippet = next_row_text
+                    
+                    if title_a and len(snippet) > 15:
+                        title = title_a.get_text(strip=True)
+                        link = title_a.get('href', "")
+                        if "http" not in link and link.startswith("//"):
+                            link = "https:" + link
+                        
+                        results.append({
+                            "source": source_label,
+                            "source_name": source_label,
+                            "source_type": "Retailer" if source_label in ("Amazon", "BestBuy") else "Web",
+                            "url": link,
+                            "title": title,
+                            "text": f"{title}: {snippet}",
+                            "product": product_name,
+                            "rating": 3.5,
+                            "date": datetime.now().strftime("%Y-%m-%d"),
+                        })
+                        if len(results) >= limit: break
+            else:
+                print(f"  [{source_label}] DDG Lite failed (Status {resp.status_code})")
     except Exception as e:
-        print(f"  [{source_label}] DDG fallback search failed: {e}")
+        print(f"  [{source_label}] DDG fallback error: {e}")
         
     print(f"  [{source_label}] DDG fallback found {len(results)} results")
     return results

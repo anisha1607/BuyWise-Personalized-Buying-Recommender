@@ -50,25 +50,43 @@ function AspectChart({ aspectSummary }: { aspectSummary: Record<string, any> }) 
 }
 
 function ScoreBreakdown({ result }: { result: AnalyzeResponse }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(true);
+  const breakdown = result.score_breakdown;
+
+  if (!breakdown) return null;
+
   return (
     <div className="card" style={{ marginBottom: "2rem" }}>
       <button 
         onClick={() => setOpen(!open)}
         style={{ width: "100%", background: "none", border: "none", color: "var(--text)", textAlign: "left", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}
       >
-        <SectionLabel title="How is my Fit Score calculated?" />
+        <SectionLabel title="Score Breakdown" />
         <span>{open ? "▲" : "▼"}</span>
       </button>
       
       {open && (
-        <div style={{ marginTop: "1rem", fontSize: "0.9rem", color: "var(--text-muted)", lineHeight: 1.6 }}>
-          <p>Your <strong>{result.fit_score}/100</strong> score isn't just an average. Here's the math in plain English:</p>
-          <ul style={{ marginTop: "1rem", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
-            <li><strong>⚖️ Weighted Priorities:</strong> Aspects you marked as "High Priority" (like {result.pros[0] || 'Battery'}) affect the score 3x more than "Low Priority" items.</li>
-            <li><strong>📉 Sentiment Analysis:</strong> We scan thousands of words to find hidden emotions. If 80% of users are happy with the {result.pros[1] || 'Design'}, that aspect gets a high rating.</li>
-            <li><strong>🚫 Deal Breakers:</strong> If you set a deal breaker and the product fails it, the score is heavily penalized.</li>
-          </ul>
+        <div style={{ marginTop: "1rem" }}>
+          <div style={{ display: "grid", gap: "1rem", marginBottom: "1.5rem" }}>
+            {breakdown.components.map((c, i) => (
+              <div key={i} style={{ background: "var(--bg-3)", padding: "1rem", borderRadius: "12px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.4rem" }}>
+                  <span style={{ fontWeight: 600, fontSize: "0.9rem" }}>{c.label}</span>
+                  <span style={{ color: "var(--accent)", fontWeight: 700 }}>{c.score} / {c.max_score}</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.75rem", color: "var(--text-muted)" }}>
+                  <span>Weight: {c.weight_pct}%</span>
+                  <span>Contribution: +{c.contribution} pts</span>
+                </div>
+                <div style={{ height: "4px", background: "var(--bg-2)", marginTop: "0.6rem", borderRadius: "2px", overflow: "hidden" }}>
+                  <div style={{ height: "100%", background: "var(--accent)", width: `${(c.score / c.max_score) * 100}%` }} />
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{ fontSize: "0.85rem", color: "var(--text-muted)", background: "rgba(var(--accent-rgb), 0.05)", padding: "1rem", borderRadius: "8px", borderLeft: "3px solid var(--accent)" }}>
+            <strong>How it adds up:</strong> {breakdown.overall_explanation}
+          </div>
         </div>
       )}
     </div>
@@ -144,17 +162,16 @@ async function exportSources(result: any) {
       const rating = r.rating ?? "";
       const date = (r.date || "").replace(/"/g, '""');
       const url = (r.url || "").replace(/"/g, '""');
-      addRow(`"${source}","Scraped Review","${sourceType}","${title}","${text}","${rating}","${date}","${url}"`);
+      addRow(`"${source}","Scraped Review","${sourceType}","${text}","${date}","${url}"`);
     }
   }
   
   // Section 2: Source comparison summary (aggregate per platform)
   if (result.source_comparison) {
     for (const [source, data] of Object.entries(result.source_comparison as Record<string, any>)) {
-      const avgSent = data.avg_sentiment?.toFixed(2) ?? "N/A";
       const count = data.review_count ?? 0;
       const est = data.estimated ? " (AI estimated)" : "";
-      addRow(`"${source}","Source Summary${est}","Platform","${count} reviews analyzed","Avg sentiment: ${avgSent}","${count}","",""`);
+      addRow(`"${source}","Source Summary${est}","Platform","${count} reviews analyzed","",""`);
     }
   }
   
@@ -163,17 +180,14 @@ async function exportSources(result: any) {
     for (const e of result.evidence) {
       const source = (e.source_name || "Unknown").replace(/"/g, '""');
       const sourceType = (e.source_type || "").replace(/"/g, '""');
-      const claim = (e.claim || "").replace(/"/g, '""');
       const text = (e.evidence_snippet || "").replace(/"/g, '""');
-      const sentiment = e.sentiment || "neutral";
-      const supports = e.supports || "";
       const url = (e.source_url || "").replace(/"/g, '""');
       const recordType = e.estimated ? "Evidence (AI estimated)" : "Evidence";
-      addRow(`"${source}","${recordType}","${sourceType}","${claim}","${text}","${sentiment} / ${supports}","","${url}"`);
+      addRow(`"${source}","${recordType}","${sourceType}","${text}","","${url}"`);
     }
   }
   
-  const headers = "Source,Record Type,Source Type,Title/Claim,Review Text/Snippet,Rating/Sentiment,Date,URL\n";
+  const headers = "Source,Record Type,Source Type,Review Text/Snippet,Date,URL\n";
   const csv = headers + rows.join("\n");
   
   const blob = new Blob([csv], { type: "text/csv" });
@@ -421,41 +435,71 @@ function MarketInsights({ intel }: { intel: MarketIntelligence }) {
 
   return (
     <div className="card" style={{ marginBottom: "2rem" }}>
-      <SectionLabel title="Market Intelligence" />
+      <div style={{ marginBottom: "1.5rem" }}>
+        <SectionLabel title="Market Intelligence" />
+      </div>
       
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem", marginBottom: "1.5rem" }}>
         <div style={{ background: "var(--bg-3)", padding: "1rem", borderRadius: "12px" }}>
-          <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: "0.5rem" }}>Value Assessment</div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "0.5rem" }}>
+            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Value Assessment</span>
+            <span style={{ fontSize: "0.85rem", color: "var(--accent)", fontWeight: 700 }}>{intel.value_score} / 10</span>
+          </div>
           <div style={{ 
             display: "inline-block", padding: "0.25rem 0.75rem", borderRadius: "20px", 
-            background: badgeColors[intel.value_badge], color: "#fff", fontSize: "0.85rem", fontWeight: 700 
+            background: badgeColors[intel.value_badge] || "var(--accent)", color: "#000", fontSize: "0.85rem", fontWeight: 700 
           }}>
             {intel.value_badge}
           </div>
         </div>
         <div style={{ background: "var(--bg-3)", padding: "1rem", borderRadius: "12px" }}>
-          <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: "0.5rem" }}>Sentiment Trend</div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "0.5rem" }}>
+            <span style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Sentiment Trend</span>
+          </div>
           <div style={{ fontSize: "0.9rem", fontWeight: 600 }}>{trendIcons[intel.sentiment_trend]}</div>
         </div>
       </div>
 
-      <div style={{ marginBottom: "1.5rem" }}>
+      <div style={{ marginBottom: "2rem" }}>
         <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: "0.5rem" }}>Release Status</div>
-        <div style={{ fontSize: "0.95rem", padding: "0.75rem", borderLeft: "4px solid var(--accent)", background: "var(--bg-3)" }}>
+        <div style={{ fontSize: "0.95rem", padding: "0.75rem", borderLeft: "4px solid var(--accent)", background: "var(--bg-3)", borderRadius: "0 8px 8px 0" }}>
           🚀 {intel.release_status}
         </div>
       </div>
 
       <div>
-        <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: "0.75rem" }}>Top Alternatives</div>
-        <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+        <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", marginBottom: "1rem" }}>Top Alternatives</div>
+        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
           {intel.competitors.map((c, i) => (
-            <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0.75rem", border: "1px solid var(--border)", borderRadius: "8px" }}>
-              <div>
-                <div style={{ fontSize: "0.9rem", fontWeight: 600 }}>{c.name}</div>
-                <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>{c.why}</div>
+            <div key={i} style={{ padding: "1.25rem", border: "1px solid var(--border)", borderRadius: "16px", background: "var(--bg-2)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "0.75rem" }}>
+                <div>
+                  <div style={{ fontSize: "1.05rem", fontWeight: 700, marginBottom: "0.25rem" }}>{c.name}</div>
+                  <div style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>{c.description}</div>
+                </div>
+                <a 
+                  href={c.link} 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  style={{ fontSize: "0.8rem", color: "var(--accent)", fontWeight: 700, textDecoration: "none", border: "1px solid var(--accent)", padding: "0.45rem 0.9rem", borderRadius: "8px" }}
+                >
+                  Check Price →
+                </a>
               </div>
-              <div style={{ fontSize: "0.8rem", color: "var(--accent)", fontWeight: 600 }}>{c.price_diff}</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem", marginTop: "1rem" }}>
+                <div>
+                  <div style={{ fontSize: "0.7rem", color: "#10b981", fontWeight: 700, textTransform: "uppercase", marginBottom: "0.4rem" }}>Pros</div>
+                  <ul style={{ padding: 0, margin: 0, listStyle: "none" }}>
+                    {c.pros.map((p, j) => <li key={j} style={{ fontSize: "0.8rem", marginBottom: "0.25rem" }}>• {p}</li>)}
+                  </ul>
+                </div>
+                <div>
+                  <div style={{ fontSize: "0.7rem", color: "#ef4444", fontWeight: 700, textTransform: "uppercase", marginBottom: "0.4rem" }}>Cons</div>
+                  <ul style={{ padding: 0, margin: 0, listStyle: "none" }}>
+                    {c.cons.map((p, j) => <li key={j} style={{ fontSize: "0.8rem", marginBottom: "0.25rem" }}>• {p}</li>)}
+                  </ul>
+                </div>
+              </div>
             </div>
           ))}
         </div>
@@ -648,7 +692,7 @@ function LoadingStep({ product }: { product: string }) {
 
 /* ─── Step 4: Dashboard ─── */
 function DashboardStep({ result, onReset }: { result: AnalyzeResponse; onReset: () => void }) {
-  const [activeTab, setActiveTab] = useState<"verdict" | "sentiment" | "catch" | "trust" | "evidence">("verdict");
+  const [activeTab, setActiveTab] = useState<"verdict" | "sentiment" | "market" | "catch" | "trust" | "evidence">("verdict");
   const [exporting, setExporting] = useState(false);
 
   const handleExport = async (fmt: "json" | "csv") => {
@@ -689,7 +733,21 @@ function DashboardStep({ result, onReset }: { result: AnalyzeResponse; onReset: 
   );
 
   // Helper to render bold text from AI
-  const formatText = (text: string) => {
+  const formatText = (text: string | string[]) => {
+    if (Array.isArray(text)) {
+      return text.map((t, idx) => (
+        <div key={idx} style={{ 
+          marginBottom: idx === text.length - 1 ? 0 : "1rem",
+          fontSize: idx === text.length - 1 ? "0.85rem" : "0.95rem",
+          color: idx === text.length - 1 ? "var(--text-muted)" : "var(--text)",
+          fontStyle: idx === text.length - 1 ? "italic" : "normal"
+        }}>
+          {t.split("**").map((part, i) => 
+            i % 2 === 1 ? <strong key={i} style={{ color: "var(--accent)" }}>{part}</strong> : part
+          )}
+        </div>
+      ));
+    }
     return text.split("**").map((part, i) => 
       i % 2 === 1 ? <strong key={i} style={{ color: "var(--accent)" }}>{part}</strong> : part
     );
@@ -720,8 +778,9 @@ function DashboardStep({ result, onReset }: { result: AnalyzeResponse; onReset: 
       <div style={{ display: "flex", borderBottom: "1px solid var(--border)", marginBottom: "2rem", overflowX: "auto" }}>
         <TabButton id="verdict" label="The Verdict" icon="🎯" />
         <TabButton id="sentiment" label="Sentiment" icon="📊" />
+        <TabButton id="market" label="Market" icon="📈" />
         <TabButton id="catch" label="The Catch" icon="⚖️" />
-        <TabButton id="trust" label="Verification" icon="⚖️" />
+        <TabButton id="trust" label="Verification" icon="🛡️" />
         <TabButton id="evidence" label="Evidence" icon="💬" />
       </div>
 
@@ -732,7 +791,7 @@ function DashboardStep({ result, onReset }: { result: AnalyzeResponse; onReset: 
             <FitScore
               score={result.fit_score}
               verdict={formatText(result.verdict)}
-              hypothesis={formatText(result.hypothesis)}
+              hypothesis={null} // Hypothesis is now integrated into verdict paras or redundant
               dealBreakerFlags={result.deal_breaker_flags}
             />
             <ScoreBreakdown result={result} />
@@ -760,14 +819,34 @@ function DashboardStep({ result, onReset }: { result: AnalyzeResponse; onReset: 
         </div>
       )}
 
+      {activeTab === "market" && (
+        <div style={{ animation: "fadeIn 0.3s ease" }}>
+          <MarketInsights intel={result.market_intelligence} />
+        </div>
+      )}
+      
       {activeTab === "catch" && (
         <div style={{ animation: "fadeIn 0.3s ease" }}>
           <div className="card" style={{ borderLeft: "4px solid var(--amber)", marginBottom: "2rem" }}>
-            <SectionLabel title="The Critical Take" />
-            <p style={{ fontSize: "0.95rem", color: "var(--text)", lineHeight: 1.6, marginBottom: "1.5rem" }}>
-              {result.critical_take || "Our critical agent is scanning for hidden catch... everything looks stable so far."}
-            </p>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "0.5rem" }}>
+              <SectionLabel title="The Critical Take" />
+              <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", fontStyle: "italic" }}>
+                Our AI experts look past the marketing to find hidden downsides and honest trade-offs.
+              </div>
+            </div>
+            <div style={{ fontSize: "0.95rem", color: "var(--text)", lineHeight: 1.6, marginBottom: "1.5rem", display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+              {result.critical_take && result.critical_take.length > 0 ? (
+                result.critical_take.map((take, idx) => (
+                  <p key={idx} style={{ borderLeft: "2px solid var(--accent)", paddingLeft: "1rem", fontStyle: "italic" }}>
+                    {take}
+                  </p>
+                ))
+              ) : (
+                <p>Our critical agent is scanning for hidden catch... everything looks stable so far.</p>
+              )}
+            </div>
             
+            <SectionLabel title="Significant Trade-offs" />
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))", gap: "1rem" }}>
               {result.trade_offs.map((t, i) => (
                 <div key={i} style={{ background: "var(--bg-3)", padding: "1.25rem", borderRadius: "12px", border: "1px solid var(--border)" }}>
